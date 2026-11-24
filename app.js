@@ -20,3 +20,154 @@ $("#tacticCards").innerHTML=motifs.map(x=>'<article class="tactic-item"><b>'+x[0
 const classics=[["Морфи — герцог Брауншвейгский и граф Изуар","Париж, 1858","Атакующая игра и быстрое развитие."],["Фишер — Бирн","Нью-Йорк, 1956","Знаменитая партия с позиционной жертвой ферзя."],["Каспаров — Топалов","Вейк-ан-Зее, 1999","Динамическая игра и длительная комбинационная атака."]];
 $("#gameLibrary").innerHTML=classics.map(x=>'<article class="library-item"><b>'+x[0]+'</b><p class="muted">'+x[1]+' · '+x[2]+'</p><span class="muted">Материал для изучения будет добавлен после проверки полной PGN-записи.</span></article>').join("");
 try{history=JSON.parse(localStorage.getItem("ca_games")||"[]");studyCount=Number(localStorage.getItem("ca_study")||0)}catch{history=[]}render();$("#engineStatus").textContent="Доска готова · Stockfish не подключён";if("serviceWorker"in navigator)$("#engineStatus").title="Оболочка приложения кэшируется после первого посещения";
+
+
+// --- Chess Academy 1.1: computer opponent, move-by-move review, and knowledge drills ---
+let reviewMoves = [];
+let reviewIndex = 0;
+let reviewPgn = "";
+let botThinking = false;
+
+function evaluatePosition(position) {
+  const values = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 0 };
+  let score = 0;
+  const center = ["d4", "e4", "d5", "e5"];
+  for (const file of files) for (let rank = 1; rank <= 8; rank++) {
+    const sq = file + rank, piece = position.get(sq);
+    if (!piece) continue;
+    const sign = piece.color === "w" ? 1 : -1;
+    score += sign * values[piece.type];
+    const fileNo = files.indexOf(file), centerDistance = Math.abs(3.5-fileNo) + Math.abs(4.5-rank);
+    if (piece.type === "n" || piece.type === "b") score += sign * Math.round((4-centerDistance) * 5);
+    if (piece.type === "p") score += sign * (piece.color === "w" ? rank-2 : 7-rank) * 7;
+    if (center.includes(sq)) score += sign * 7;
+  }
+  if (position.isCheck()) score += position.turn() === "w" ? -22 : 22;
+  return score;
+}
+function searchPosition(position, depth, alpha, beta) {
+  if (position.isCheckmate()) return -100000 - depth;
+  if (position.isDraw()) return 0;
+  if (depth <= 0) return (position.turn() === "w" ? 1 : -1) * evaluatePosition(position);
+  const moves = position.moves({ verbose: true });
+  if (!moves.length) return 0;
+  let best = -Infinity;
+  for (const m of moves) {
+    const next = new Chess(position.fen());
+    next.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+    const score = -searchPosition(next, depth - 1, -beta, -alpha);
+    if (score > best) best = score;
+    if (score > alpha) alpha = score;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+function chooseComputerMove() {
+  const depth = Number($("#botDepth")?.value || 2);
+  const moves = game.moves({ verbose: true });
+  let bestMove = null, bestScore = -Infinity;
+  for (const m of moves) {
+    const next = new Chess(game.fen());
+    next.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+    const score = -searchPosition(next, Math.max(0, depth - 1), -Infinity, Infinity);
+    if (score > bestScore) { bestScore = score; bestMove = m; }
+  }
+  return bestMove;
+}
+function computerReply() {
+  if (!$("#botMode")?.checked || game.turn() !== "b" || game.isGameOver() || botThinking) return;
+  botThinking = true;
+  $("#turnInfo").textContent = "Компьютер думает…";
+  setTimeout(() => {
+    try {
+      const move = chooseComputerMove();
+      if (move) game.move({ from: move.from, to: move.to, promotion: move.promotion || "q" });
+      selected = null; targets = []; render();
+    } finally { botThinking = false; }
+  }, 80);
+}
+function tap(sq) {
+  if (botThinking || ($("#botMode")?.checked && game.turn() === "b")) return;
+  const piece = game.get(sq);
+  if (selected) {
+    let move = null;
+    try { move = game.move({ from: selected, to: sq, promotion: "q" }); } catch {}
+    if (move) {
+      selected = null; targets = []; render(); computerReply(); return;
+    }
+    if (piece && piece.color === game.turn()) { select(sq); return; }
+    selected = null; targets = []; render(); return;
+  }
+  if (piece && piece.color === game.turn()) select(sq);
+}
+function renderReview() {
+  if (!reviewPgn) return;
+  const replay = new Chess();
+  try {
+    for (let i = 0; i < reviewIndex; i++) replay.move(reviewMoves[i].san);
+    game = replay; selected = null; targets = []; render();
+    $("#analysisPosition").textContent = reviewMoves.length
+      ? "Позиция " + reviewIndex + " из " + reviewMoves.length + " полуходов · " + (reviewIndex ? reviewMoves[reviewIndex-1].san : "Начальная позиция")
+      : "В записи нет ходов.";
+  } catch { $("#analysisPosition").textContent = "Не удалось воспроизвести эту позицию."; }
+}
+function loadPGN(pgn) {
+  try {
+    const parsed = new Chess();
+    parsed.loadPgn(pgn);
+    if (!parsed.history().length) throw new Error("Пустая партия");
+    reviewPgn = pgn;
+    reviewMoves = parsed.history({ verbose: true });
+    reviewIndex = 0;
+    $("#analysisResult").textContent = "PGN принят: " + reviewMoves.length + " полуходов. Используй кнопки для пошагового просмотра.";
+    showPage("analysis");
+    renderReview();
+  } catch {
+    $("#analysisResult").textContent = "Не удалось загрузить PGN. Проверь формат записи и корректность ходов.";
+  }
+}
+$("#analysisStart")?.addEventListener("click", () => { reviewIndex = 0; renderReview(); });
+$("#analysisPrev")?.addEventListener("click", () => { reviewIndex = Math.max(0, reviewIndex-1); renderReview(); });
+$("#analysisNext")?.addEventListener("click", () => { reviewIndex = Math.min(reviewMoves.length, reviewIndex+1); renderReview(); });
+$("#analysisEnd")?.addEventListener("click", () => { reviewIndex = reviewMoves.length; renderReview(); });
+$("#botMode")?.addEventListener("change", () => {
+  if ($("#botMode").checked && game.turn() === "b") computerReply();
+  toast($("#botMode").checked ? "Режим игры против компьютера включён" : "Режим компьютера выключен");
+});
+
+// Short theory checks: answers test standard opening principles, not engine-calculated tactics.
+const drills = [
+  {q:"Итальянская партия: 1. e4 e5 2. Nf3 Nc6. Как обычно продолжают белые?",a:["Bc4","Qh5","a3"],c:0,h:"Развиваем слона на активную диагональ c4, нацеливаясь на f7.",why:"3. Bc4 — классическое начало Итальянской партии."},
+  {q:"Какой ход начинает Ферзевый гамбит?",a:["1. e4","1. d4 d5 2. c4","1. Nf3"],c:1,h:"Белые предлагают пешку c4 в борьбе за центр.",why:"Ходы 1. d4 d5 2. c4 определяют Ферзевый гамбит."},
+  {q:"Какой принцип важнее всего в дебюте?",a:["Ранний выход ферзя","Развитие фигур и борьба за центр","Ходить одной фигурой много раз"],c:1,h:"Развивай лёгкие фигуры, контролируй центр и обеспечь безопасность короля.",why:"Развитие, центр и безопасность короля — базовые дебютные приоритеты."},
+  {q:"Как называется ход короля и ладьи одним ходом?",a:["Рокировка","Вилка","Связка"],c:0,h:"Этот ход помогает обезопасить короля и активировать ладью.",why:"Это рокировка; она возможна только при соблюдении специальных правил."},
+  {q:"Что такое связка?",a:["Нападение на две фигуры","Фигура не может безопасно уйти из-за более ценной фигуры за ней","Обмен ферзей"],c:1,h:"Представь слона, который атакует коня, а за конём стоит король.",why:"Связка ограничивает движение фигуры из-за угрозы более ценной цели."}
+];
+let drillIndex = -1, drillDone = 0;
+function newDrill() {
+  drillIndex = (drillIndex + 1) % drills.length;
+  const d = drills[drillIndex];
+  $("#quizQuestion").textContent = (drillIndex+1) + "/" + drills.length + " · " + d.q;
+  $("#quizOptions").innerHTML = d.a.map((answer,i) => '<button class="quiz-option" data-answer="'+i+'">'+answer+'</button>').join("");
+  $("#quizFeedback").textContent = "";
+  $("#quizHint").disabled = false;
+  document.querySelectorAll("[data-answer]").forEach(button => button.addEventListener("click", () => {
+    if (button.disabled) return;
+    document.querySelectorAll("[data-answer]").forEach(b => b.disabled = true);
+    if (Number(button.dataset.answer) === d.c) {
+      drillDone++; $("#quizFeedback").textContent = "Верно. " + d.why + " Правильных ответов: " + drillDone;
+      button.classList.add("correct");
+    } else {
+      $("#quizFeedback").textContent = "Не совсем. " + d.why;
+      button.classList.add("incorrect");
+      document.querySelector('[data-answer="'+d.c+'"]')?.classList.add("correct");
+    }
+  }));
+}
+$("#quizNew")?.addEventListener("click", newDrill);
+$("#quizHint")?.addEventListener("click", () => {
+  if (drillIndex < 0) { $("#quizFeedback").textContent = "Сначала нажми «Новая позиция»."; return; }
+  $("#quizFeedback").textContent = "Подсказка: " + drills[drillIndex].h;
+});
+$("#engineStatus").textContent = "Доска и локальный соперник готовы";
+$("#engineStatus").title = "Компьютер использует встроенный поисковый алгоритм. Stockfish пока не подключён.";
