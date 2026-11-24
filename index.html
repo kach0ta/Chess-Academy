@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101820"><meta name="description" content="Chess Academy — шахматная тренировка и анализ партий">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./style.css"><title>Chess Academy</title>
+</head>
+<body>
+<header class="top"><button class="menu" id="menuBtn" aria-label="Меню">☰</button><div class="brand">♞ <b>Chess Academy</b><small>Твоя шахматная лаборатория</small></div><div class="top-actions"><span id="engineStatus" class="status">Загрузка…</span></div></header>
+<div class="shell">
+<aside id="sidebar" class="sidebar">
+<nav>
+<button class="nav active" data-page="home">⌂ <span>Главная</span></button>
+<button class="nav" data-page="play">♟ <span>Играть</span></button>
+<button class="nav" data-page="analysis">⌕ <span>Анализ партии</span></button>
+<button class="nav" data-page="openings">♜ <span>Дебюты</span></button>
+<button class="nav" data-page="tactics">⚡ <span>Тактика</span></button>
+<button class="nav" data-page="library">▤ <span>Библиотека партий</span></button>
+<button class="nav" data-page="progress">◷ <span>Мой прогресс</span></button>
+</nav><div class="side-note">Локальный учебный профиль<br><b id="gamesCount">0</b> сохранённых партий</div>
+</aside>
+<main id="main">
+<section class="page visible" id="page-home">
+<div class="hero"><div><p class="eyebrow">ШАХМАТЫ БЕЗ ГРАНИЦ</p><h1>Думай глубже.<br><em>Играй сильнее.</em></h1><p>Тренируйся, разбирай партии и изучай идеи великих шахматистов.</p><button class="primary" data-go="play">Начать партию</button></div><div class="hero-piece">♞</div></div>
+<div class="section-head"><div><p class="eyebrow">ТВОЯ АКАДЕМИЯ</p><h2>Продолжить обучение</h2></div></div>
+<div class="tiles"><button class="tile" data-go="analysis"><span>⌕</span><b>Анализ партии</b><small>Импортируй PGN и разбери свои решения</small></button><button class="tile" data-go="openings"><span>♜</span><b>Дебютная теория</b><small>Изучай планы и ключевые варианты</small></button><button class="tile" data-go="tactics"><span>⚡</span><b>Тактическая тренировка</b><small>Решай задачи и развивай расчёт</small></button></div>
+<div class="notice"><b>Важно о текущей версии</b><p>Это первая рабочая сборка интерфейса и шахматной доски. Движок Stockfish, глубокая оценка позиции и полноценная база задач пока не подключены — они будут добавляться отдельно, без выдачи простых оценок за гроссмейстерский анализ.</p></div>
+</section>
+<section class="page" id="page-play"><div class="section-head"><div><p class="eyebrow">ПРАКТИКА</p><h2>Игровая доска</h2></div></div><div class="play-layout"><div class="board-wrap"><div class="board" id="board" aria-label="Шахматная доска"></div><div class="board-controls"><button id="undoBtn">↶ Отменить</button><button id="flipBtn">⇅ Перевернуть</button><button id="newBtn" class="primary">Новая партия</button></div></div><div class="panel"><h3>Партия</h3><div id="turnInfo" class="turn">Ход белых</div><div id="moveList" class="moves">Пока нет ходов</div><div class="button-row"><button id="saveBtn">Сохранить</button><button id="exportBtn">Экспорт PGN</button></div><p class="muted">Выбирай фигуру, затем клетку назначения. Подсветка показывает доступные ходы.</p></div></div></section>
+<section class="page" id="page-analysis"><p class="eyebrow">РАЗБОР</p><h2>Анализ партии</h2><p class="muted">Вставь PGN своей партии. Академия загрузит запись и покажет список ходов для самостоятельного разбора.</p><textarea id="pgnInput" placeholder="Вставь сюда PGN партии…"></textarea><div class="button-row"><button id="loadPgnBtn" class="primary">Загрузить PGN</button><button id="pasteExampleBtn">Пример партии</button></div><div id="analysisResult" class="panel result">Здесь появится результат загрузки.</div></section>
+<section class="page" id="page-openings"><p class="eyebrow">ДЕБЮТНАЯ ПОДГОТОВКА</p><h2>Основы дебютов</h2><div class="tiles" id="openingTiles"></div></section>
+<section class="page" id="page-tactics"><p class="eyebrow">РАСЧЁТ ВАРИАНТОВ</p><h2>Тактическая тренировка</h2><div class="panel"><h3>Тактические мотивы</h3><p>Начни с распознавания идей: двойной удар, связка, вскрытое нападение, отвлечение и матовая атака.</p><div id="tacticCards" class="tactic-list"></div><p class="muted">Интерактивные задачи с проверенными решениями появятся в следующем обновлении. Сейчас этот раздел — учебный справочник, а не генератор фиктивных задач.</p></div></section>
+<section class="page" id="page-library"><p class="eyebrow">ИСТОРИЯ ШАХМАТ</p><h2>Библиотека партий</h2><div id="gameLibrary" class="library-list"></div></section>
+<section class="page" id="page-progress"><p class="eyebrow">СТАТИСТИКА</p><h2>Мой прогресс</h2><div class="stats"><div class="stat"><strong id="statGames">0</strong><span>Сохранено партий</span></div><div class="stat"><strong id="statMoves">0</strong><span>Сделано ходов</span></div><div class="stat"><strong id="statStudy">0</strong><span>Открыто тем</span></div></div><div class="panel"><h3>Локальные данные</h3><p class="muted">Прогресс хранится в памяти браузера на этом устройстве. Очистка данных сайта может удалить его.</p><button id="clearDataBtn" class="danger">Очистить прогресс</button></div></section>
+</main></div>
+<div id="toast" class="toast" role="status"></div><script type="module" src="./app.js"></script><script>if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));</script>
+</body></html>
