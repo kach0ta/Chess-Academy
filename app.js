@@ -171,3 +171,96 @@ $("#quizHint")?.addEventListener("click", () => {
 });
 $("#engineStatus").textContent = "Доска и локальный соперник готовы";
 $("#engineStatus").title = "Компьютер использует встроенный поисковый алгоритм. Stockfish пока не подключён.";
+
+
+// --- Stockfish 19 lite analysis worker ---
+let stockfishWorker = null;
+let stockfishReady = false;
+let pendingStockfishFen = null;
+let stockfishSearchFen = null;
+function stopStockfish() {
+  if (stockfishWorker) {
+    try { stockfishWorker.postMessage("stop"); stockfishWorker.postMessage("quit"); } catch {}
+    stockfishWorker.terminate();
+  }
+  stockfishWorker = null;
+  stockfishReady = false;
+  pendingStockfishFen = null;
+}
+function uciPvToSan(fen, pv) {
+  const position = new Chess(fen);
+  const san = [];
+  for (const token of pv.trim().split(/\s+/).slice(0, 8)) {
+    if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(token)) break;
+    try {
+      const move = position.move({from:token.slice(0,2),to:token.slice(2,4),promotion:token[4] || "q"});
+      if (!move) break;
+      san.push(move.san);
+    } catch { break; }
+  }
+  return san.join(" ");
+}
+function handleStockfishLine(line) {
+  if (line === "uciok") { stockfishWorker.postMessage("isready"); return; }
+  if (line === "readyok") {
+    stockfishReady = true;
+    if (pendingStockfishFen) runStockfish(pendingStockfishFen);
+    return;
+  }
+  if (line.startsWith("info ")) {
+    const depth = line.match(/\bdepth (\d+)/)?.[1];
+    const cp = line.match(/\bscore cp (-?\d+)/)?.[1];
+    const mate = line.match(/\bscore mate (-?\d+)/)?.[1];
+    const pv = line.match(/\bpv (.+)$/)?.[1];
+    if (depth && (cp || mate)) {
+      const whiteTurn = new Chess(stockfishSearchFen).turn() === "w";
+      const score = cp ? (Number(cp) * (whiteTurn ? 1 : -1) / 100).toFixed(2) : null;
+      const scoreText = mate ? "Мат за " + Math.abs(Number(mate)) : (Number(score) > 0 ? "+" : "") + score;
+      $("#engineOutput").textContent = "Stockfish 19 lite · глубина " + depth + " · оценка " + scoreText + (pv ? " · вариант: " + uciPvToSan(stockfishSearchFen, pv) : "");
+    }
+  }
+  if (line.startsWith("bestmove ")) {
+    const best = line.split(/\s+/)[1];
+    if (best && best !== "(none)") {
+      const san = uciPvToSan(stockfishSearchFen, best);
+      $("#engineOutput").textContent += " · лучший ход: " + san;
+    }
+  }
+}
+function runStockfish(fen) {
+  if (!stockfishWorker || !stockfishReady) { pendingStockfishFen = fen; return; }
+  pendingStockfishFen = null;
+  stockfishSearchFen = fen;
+  $("#engineOutput").textContent = "Stockfish анализирует позицию…";
+  stockfishWorker.postMessage("stop");
+  stockfishWorker.postMessage("position fen " + fen);
+  stockfishWorker.postMessage("go depth " + Number($("#engineDepth").value || 14));
+}
+$("#engineAnalyze")?.addEventListener("click", () => {
+  if (!window.Worker) { $("#engineOutput").textContent = "Этот браузер не поддерживает Web Worker."; return; }
+  const fen = game.fen();
+  if (!stockfishWorker) {
+    $("#engineOutput").textContent = "Загрузка Stockfish 19 lite и WASM-файла. При первом запуске нужен интернет…";
+    try {
+      stockfishWorker = new Worker("./engine-worker.js");
+      stockfishWorker.onmessage = event => handleStockfishLine(String(event.data));
+      stockfishWorker.onerror = () => {
+        $("#engineOutput").textContent = "Не удалось загрузить Stockfish. Проверь интернет и попробуй ещё раз.";
+        stopStockfish();
+      };
+      pendingStockfishFen = fen;
+      stockfishWorker.postMessage("uci");
+    } catch {
+      $("#engineOutput").textContent = "Не удалось запустить движок в этом браузере.";
+      stopStockfish();
+    }
+  } else {
+    runStockfish(fen);
+  }
+});
+$("#engineStop")?.addEventListener("click", () => {
+  if (stockfishWorker) {
+    stockfishWorker.postMessage("stop");
+    $("#engineOutput").textContent += " · анализ остановлен";
+  }
+});
